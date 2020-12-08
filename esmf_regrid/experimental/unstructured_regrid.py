@@ -59,6 +59,7 @@ class MeshInfo:
         self.nsi = node_start_index
         self.esi = elem_start_index
         self.areas = areas
+        self.dims = 1
 
     def _as_esmf_info(self):
         # ESMF uses a slightly different format to UGRID,
@@ -122,7 +123,7 @@ class MeshInfo:
         return self.esi
 
     def _flatten_array(self, array):
-        return array
+        return array.reshape((self.size(), -1))
 
-    def _unflatten_array(self, array):
-        return array
+    def _unflatten_array(self, array, extra_dims):
+        return array.reshape((self.size(),) + extra_dims)

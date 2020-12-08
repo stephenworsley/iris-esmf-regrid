@@ -78,6 +78,7 @@ class GridInfo:
             self.crs = crs
         self.circular = circular
         self.areas = areas
+        self.dims = 2
 
     def _as_esmf_info(self):
         shape = np.array([len(self.lats), len(self.lons)])
@@ -173,10 +174,10 @@ class GridInfo:
         return 1
 
     def _flatten_array(self, array):
-        return array.flatten()
+        return array.reshape((self.size(), -1))
 
-    def _unflatten_array(self, array):
-        return array.reshape((len(self.lons), len(self.lats)))
+    def _unflatten_array(self, array, extra_dims):
+        return array.reshape((len(self.lons), len(self.lats)) + extra_dims)
 
 
 def _get_regrid_weights_dict(src_field, tgt_field):
@@ -294,6 +295,8 @@ class Regridder:
             A numpy array whose shape is compatible with self.tgt.
 
         """
+        array_shape = src_array.shape
+        extra_shape = array_shape[self.src.dims:]
         src_inverted_mask = self.src._flatten_array(~ma.getmaskarray(src_array))
         weight_sums = self.weight_matrix * src_inverted_mask
         # Set the minimum mdtol to be slightly higher than 0 to account for rounding
@@ -306,7 +309,7 @@ class Regridder:
                 masked_weight_sums == 0.0, 1.0, masked_weight_sums
             )
         elif norm_type == "dstarea":
-            normalisations = np.ones(self.tgt.size())
+            normalisations = np.ones_like(masked_weight_sums)
         else:
             raise ValueError(f'Normalisation type "{norm_type}" is not supported')
         normalisations = ma.array(normalisations, mask=np.logical_not(tgt_mask))
@@ -314,5 +317,5 @@ class Regridder:
         flat_src = self.src._flatten_array(ma.filled(src_array, 0.0))
         flat_tgt = self.weight_matrix * flat_src
         flat_tgt = flat_tgt * normalisations
-        tgt_array = self.tgt._unflatten_array(flat_tgt)
+        tgt_array = self.tgt._unflatten_array(flat_tgt, extra_shape)
         return tgt_array

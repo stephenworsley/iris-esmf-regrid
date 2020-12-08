@@ -114,3 +114,9 @@ def test_Regridder_regrid():
         ]
     )
     assert ma.allclose(result_dstarea, expected_dstarea)
+
+    double_src = np.stack([src_array, src_array], axis=2)
+    double_expected = np.stack([expected_nomask, expected_nomask], axis=2)
+
+    double_result = rg.regrid(double_src)
+    assert ma.allclose(double_result, double_expected)
