@@ -2,14 +2,20 @@
 
 import iris
 from iris.analysis._interpolation import get_xy_coords
+import numpy as np
 
 # from numpy import ma
 
-from esmf_regrid.esmf_regridder import Regridder
+from esmf_regrid.esmf_regridder import GridInfo, Regridder
+from esmf_regrid.experimental.unstructured_regrid import MeshInfo
 
-# from esmf_regrid.esmf_regridder import GridInfo
-# from esmf_regrid.experimental.unstructured_regrid import MeshInfo
-
+# Taken from PR #26
+def _bounds_cf_to_simple_1d(cf_bounds):
+    assert (cf_bounds[1:, 0] == cf_bounds[:-1, 1]).all()
+    simple_bounds = np.empty((cf_bounds.shape[0]+1,), dtype=np.float64)
+    simple_bounds[:-1] = cf_bounds[:, 0]
+    simple_bounds[-1] = cf_bounds[-1, 1]
+    return simple_bounds
 
 def _get_mesh_and_dim(cube):
     # Returns the cube's mesh and the dimension that mesh belongs to.
@@ -20,15 +26,30 @@ def _get_mesh_and_dim(cube):
     pass
 
 
-def _cube_to_MeshInfo(cube):
-    # Returns a MeshInfo object describing the mesh of the cube.
-    pass
+def _mesh_to_MeshInfo(mesh):
+    assert mesh.topology_dimension == 2
+    meshinfo = MeshInfo(
+        mesh.node_coords,
+        mesh.face_node_connectivity,
+        mesh.start_index,
+    )
+    return meshinfo
 
 
 def _cube_to_GridInfo(cube):
     # Returns a GridInfo object describing the horizontal grid of the cube.
     # This may be inherited from code written for the rectilinear regridding scheme.
-    pass
+    lat = cube.coord('latitude')
+    lon = cube.coord('longitude')
+    # TODO: accomodate other x/y coords.
+    # TODO: perform checks on lat/lon.
+    return GridInfo(
+        lon.points,
+        lat.points,
+        _bounds_cf_to_simple_1d(lon.bounds),
+        _bounds_cf_to_simple_1d(lat.bounds),
+        circular=lon.circular,
+    )
 
 
 # def _regrid_along_dims(regridder, data, src_dim, mdtol):
@@ -72,12 +93,14 @@ def _regrid_unstructured_to_rectilinear__prepare(src_mesh_cube, target_grid_cube
 
     grid_x, grid_y = get_xy_coords(target_grid_cube)
 
-    meshinfo = _cube_to_MeshInfo(src_mesh_cube)
+    # TODO: check that the location is face. All other locations (node, edge) are
+    #  non-sensical for area weighted regridding.
+    mesh, mesh_dim = _get_mesh_and_dim(src_mesh_cube)
+    # meshinfo = _cube_to_MeshInfo(src_mesh_cube)
+    meshinfo = _mesh_to_MeshInfo(mesh)
     gridinfo = _cube_to_GridInfo(target_grid_cube)
 
     regridder = Regridder(meshinfo, gridinfo)
-
-    mesh, mesh_dim = _get_mesh_and_dim(src_mesh_cube)
 
     regrid_info = (mesh, mesh_dim, grid_x, grid_y, regridder)
 
