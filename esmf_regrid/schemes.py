@@ -1,9 +1,11 @@
 """Provides an iris interface for regridding."""
 
 import copy
+import functools
 
 import iris
 from iris.analysis._interpolation import get_xy_dim_coords
+from iris._lazy_data import map_complete_blocks
 import numpy as np
 
 from esmf_regrid.esmf_regridder import GridInfo, Regridder
@@ -116,7 +118,9 @@ def _create_cube(data, src_cube, grid_dim_x, grid_dim_y, grid_x, grid_y):
     return new_cube
 
 
-def _regrid_rectilinear_to_rectilinear__prepare(src_grid_cube, tgt_grid_cube):
+def _regrid_rectilinear_to_rectilinear__prepare(
+    src_grid_cube, tgt_grid_cube, base=Regridder
+):
     tgt_x, tgt_y = get_xy_dim_coords(tgt_grid_cube)
     src_x, src_y = get_xy_dim_coords(src_grid_cube)
 
@@ -126,7 +130,7 @@ def _regrid_rectilinear_to_rectilinear__prepare(src_grid_cube, tgt_grid_cube):
     srcinfo = _cube_to_GridInfo(src_grid_cube)
     tgtinfo = _cube_to_GridInfo(tgt_grid_cube)
 
-    regridder = Regridder(srcinfo, tgtinfo)
+    regridder = base(srcinfo, tgtinfo)
 
     regrid_info = (grid_x_dim, grid_y_dim, tgt_x, tgt_y, regridder)
 
@@ -138,8 +142,19 @@ def _regrid_rectilinear_to_rectilinear__perform(src_cube, regrid_info, mdtol):
 
     # Perform regridding with realised data for the moment. This may be changed
     # in future to handle src_cube.lazy_data.
-    new_data = _regrid_along_grid_dims(
-        regridder, src_cube.data, grid_x_dim, grid_y_dim, mdtol
+    regrid = functools.partial(
+        _regrid_along_grid_dims,
+        regridder,
+        grid_x_dim=grid_x_dim,
+        grid_y_dim=grid_y_dim,
+        mdtol=mdtol,
+    )
+
+    new_data = map_complete_blocks(
+        src_cube,
+        regrid,
+        (grid_x_dim, grid_y_dim),
+        (len(grid_x.points), len(grid_y.points)),
     )
 
     new_cube = _create_cube(
@@ -153,7 +168,7 @@ def _regrid_rectilinear_to_rectilinear__perform(src_cube, regrid_info, mdtol):
     return new_cube
 
 
-def regrid_rectilinear_to_rectilinear(src_cube, grid_cube, mdtol=0):
+def regrid_rectilinear_to_rectilinear(src_cube, grid_cube, mdtol=0, base=Regridder):
     """
     Regrid rectilinear cube onto another rectilinear grid.
 
@@ -184,7 +199,9 @@ def regrid_rectilinear_to_rectilinear(src_cube, grid_cube, mdtol=0):
         A new iris.cube.Cube instance.
 
     """
-    regrid_info = _regrid_rectilinear_to_rectilinear__prepare(src_cube, grid_cube)
+    regrid_info = _regrid_rectilinear_to_rectilinear__prepare(
+        src_cube, grid_cube, base=base
+    )
     result = _regrid_rectilinear_to_rectilinear__perform(src_cube, regrid_info, mdtol)
     return result
 
@@ -198,7 +215,7 @@ class ESMFAreaWeighted:
     ESMF to be able to handle grids in different coordinate systems.
     """
 
-    def __init__(self, mdtol=0):
+    def __init__(self, mdtol=0, base=Regridder):
         """
         Area-weighted scheme for regridding between rectilinear grids.
 
@@ -218,6 +235,7 @@ class ESMFAreaWeighted:
             msg = "Value for mdtol must be in range 0 - 1, got {}."
             raise ValueError(msg.format(mdtol))
         self.mdtol = mdtol
+        self.base = base
 
     def __repr__(self):
         """Return a representation of the class."""
@@ -242,13 +260,15 @@ class ESMFAreaWeighted:
             where `cube` is a cube with the same grid as `src_grid`
             that is to be regridded to the grid of `tgt_grid`.
         """
-        return ESMFAreaWeightedRegridder(src_grid, tgt_grid, mdtol=self.mdtol)
+        return ESMFAreaWeightedRegridder(
+            src_grid, tgt_grid, mdtol=self.mdtol, base=base
+        )
 
 
 class ESMFAreaWeightedRegridder:
     """Regridder class for unstructured to rectilinear cubes."""
 
-    def __init__(self, src_grid, tgt_grid, mdtol=0):
+    def __init__(self, src_grid, tgt_grid, mdtol=0, base=Regridder):
         """
         Create regridder for conversions between source grid and target grid.
 
@@ -272,7 +292,9 @@ class ESMFAreaWeightedRegridder:
             raise ValueError(msg.format(mdtol))
         self.mdtol = mdtol
 
-        regrid_info = _regrid_rectilinear_to_rectilinear__prepare(src_grid, tgt_grid)
+        regrid_info = _regrid_rectilinear_to_rectilinear__prepare(
+            src_grid, tgt_grid, base=base
+        )
 
         # Store regrid info.
         _, _, self.grid_x, self.grid_y, self.regridder = regrid_info
