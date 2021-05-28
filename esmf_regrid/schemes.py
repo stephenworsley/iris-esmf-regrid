@@ -261,7 +261,7 @@ class ESMFAreaWeighted:
             that is to be regridded to the grid of `tgt_grid`.
         """
         return ESMFAreaWeightedRegridder(
-            src_grid, tgt_grid, mdtol=self.mdtol, base=base
+            src_grid, tgt_grid, mdtol=self.mdtol, base=self.base
         )
 
 

@@ -1,4 +1,4 @@
-"""Unit tests for :func:`esmf_regrid.schemes.regrid_rectilinear_to_rectilinear`."""
+"""Unit tests for supplying regridding schemes with an alternative base."""
 
 import dask.array as da
 from iris.coord_systems import RotatedGeogCS
@@ -7,8 +7,13 @@ from iris.cube import Cube
 import numpy as np
 from numpy import ma
 
-from esmf_regrid.schemes import regrid_rectilinear_to_rectilinear
+from esmf_regrid.schemes import (
+    regrid_rectilinear_to_rectilinear,
+    ESMFAreaWeightedRegridder,
+    ESMFAreaWeighted,
+)
 from esmf_regrid.tests.unit.schemes.test__cube_to_GridInfo import _grid_cube
+from esmf_regrid.experimental.sparse_regridder import SparseRegridder
 
 
 def test_rotated_regridding():
@@ -44,15 +49,15 @@ def test_rotated_regridding():
         coord_system=tgt_coord_system,
     )
     src_data = np.arange(n_lons * n_lats).reshape([n_lats, n_lons])
-    # src_mask = np.empty([n_lats, n_lons])
-    # src_mask[:] = np.array([1, 0, 0, 1])[:, np.newaxis]
     src_mask = np.array([[1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0], [1, 1, 1, 1]])
     src_data = ma.array(src_data, mask=src_mask)
     src.data = src_data
 
-    no_mdtol_result = regrid_rectilinear_to_rectilinear(src, tgt)
+    no_mdtol_result = regrid_rectilinear_to_rectilinear(src, tgt, base=SparseRegridder)
 
-    full_mdtol_result = regrid_rectilinear_to_rectilinear(src, tgt, mdtol=1)
+    full_mdtol_result = regrid_rectilinear_to_rectilinear(
+        src, tgt, mdtol=1, base=SparseRegridder
+    )
 
     expected_data = np.array(
         [[5, 4, 8, 9], [5, 4, 8, 9], [6, 7, 11, 10], [6, 7, 11, 10]]
@@ -127,7 +132,7 @@ def test_extra_dims():
 
     src_cube = _add_metadata(src_cube)
 
-    result = regrid_rectilinear_to_rectilinear(src_cube, tgt_grid)
+    result = regrid_rectilinear_to_rectilinear(src_cube, tgt_grid, base=SparseRegridder)
 
     expected_data = np.empty([h, tgt_lats, t, tgt_lons, e])
     expected_data[:] = np.arange(t * h * e).reshape([h, t, e])[
@@ -163,10 +168,79 @@ def test_laziness():
     src_data = da.ones([n_lats, n_lons])
     src.data = src_data
     assert src.has_lazy_data()
-    result = regrid_rectilinear_to_rectilinear(src, tgt)
+    result = regrid_rectilinear_to_rectilinear(src, tgt, base=SparseRegridder)
     assert result.has_lazy_data()
 
     src.data
     print(src.has_lazy_data())
     result = regrid_rectilinear_to_rectilinear(src, tgt)
     print(result.has_lazy_data())
+
+
+def test_dim_switching():
+    """
+    Test calling of :func:`esmf_regrid.schemes.ESMFAreaWeightedRegridder`.
+
+    Checks that the regridder accepts a cube with dimensions in a different
+    order than the cube which initialised it. Checks that dimension order is
+    inherited from the cube in the calling function in both cases.
+    """
+    n_lons = 6
+    n_lats = 5
+    lon_bounds = (-180, 180)
+    lat_bounds = (-90, 90)
+    src = _grid_cube(n_lons, n_lats, lon_bounds, lat_bounds, circular=True)
+    tgt = _grid_cube(n_lons, n_lats, lon_bounds, lat_bounds, circular=True)
+
+    regridder = ESMFAreaWeightedRegridder(src, tgt, base=SparseRegridder)
+    unswitched_result = regridder(src)
+
+    src_switched = src.copy()
+    src_switched.transpose()
+    switched_result = regridder(src_switched)
+
+    assert unswitched_result.coord(dimensions=(0,)).standard_name == "latitude"
+    assert unswitched_result.coord(dimensions=(1,)).standard_name == "longitude"
+    assert switched_result.coord(dimensions=(0,)).standard_name == "longitude"
+    assert switched_result.coord(dimensions=(1,)).standard_name == "latitude"
+
+
+def test_cube_regrid():
+    """
+    Test that ESMFAreaWeighted can be passed to a cubes regrid method.
+
+    Checks that regridding occurs and that mdtol is used correctly.
+    """
+    scheme_default = ESMFAreaWeighted(base=SparseRegridder)
+    scheme_full_mdtol = ESMFAreaWeighted(mdtol=1, base=SparseRegridder)
+
+    n_lons_src = 6
+    n_lons_tgt = 3
+    n_lats_src = 4
+    n_lats_tgt = 2
+    lon_bounds = (-180, 180)
+    lat_bounds = (-90, 90)
+    src = _grid_cube(n_lons_src, n_lats_src, lon_bounds, lat_bounds, circular=True)
+    tgt = _grid_cube(n_lons_tgt, n_lats_tgt, lon_bounds, lat_bounds, circular=True)
+    src_data = np.zeros([n_lats_src, n_lons_src])
+    src_mask = np.zeros([n_lats_src, n_lons_src])
+    src_mask[0, 0] = 1
+    src_data = ma.array(src_data, mask=src_mask)
+    src.data = src_data
+
+    result_default = src.regrid(tgt, scheme_default)
+    result_full = src.regrid(tgt, scheme_full_mdtol)
+
+    expected_data_default = np.zeros([n_lats_tgt, n_lons_tgt])
+    expected_mask = np.zeros([n_lats_tgt, n_lons_tgt])
+    expected_mask[0, 0] = 1
+    expected_data_full = ma.array(expected_data_default, mask=expected_mask)
+
+    expected_cube_default = tgt.copy()
+    expected_cube_default.data = expected_data_default
+
+    expected_cube_full = tgt.copy()
+    expected_cube_full.data = expected_data_full
+
+    assert expected_cube_default == result_default
+    assert expected_cube_full == result_full
