@@ -11,8 +11,10 @@ dependencies:
 
 # Core dependencies.
   - cartopy>=0.18
+  - dask
   - numpy>=1.14
   - scipy
+  - sparse
   - esmpy>=7.0
   - iris
 
