@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
 
+## [0.12.1] - 2025-04-09
+
+### Fixed
+
+- [PR#486](https://github.com/SciTools/iris-esmf-regrid/pull/486)
+  Fixed bug causing the esmf argument `pole_method` to be rejected.
+  [@stephenworsley](https://github.com/stephenworsley)
+
+- [PR#479](https://github.com/SciTools/iris-esmf-regrid/pull/479)
+  Fixed bug which caused loading to be backwards incompatible.
+  [@stephenworsley](https://github.com/stephenworsley)
 
 ## [0.12] - 2025-03-17
 
