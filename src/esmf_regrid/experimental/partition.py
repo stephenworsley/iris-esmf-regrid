@@ -1,7 +1,7 @@
 """Provides an interface for splitting up a large regridding task."""
 
 import esmpy
-from iris.experimental.mesh_coord_indexing import Options, SETTING
+from iris.experimental.mesh_coord_indexing import SETTING, Options
 import numpy as np
 
 from esmf_regrid.constants import Constants
@@ -60,7 +60,7 @@ def _determine_blocks(shape, chunks, num_chunks, explicit_blocks):
                 [[int(lower), int(upper)]]
                 for lower, upper in zip(bounds[0][:-1], bounds[0][1:], strict=True)
             ]
-        elif len(bounds) == 2:  # noqa: RET506
+        elif len(bounds) == 2:
             explicit_blocks = [
                 [[int(ly), int(uy)], [int(lx), int(ux)]]
                 for ly, uy in zip(bounds[0][:-1], bounds[0][1:], strict=True)

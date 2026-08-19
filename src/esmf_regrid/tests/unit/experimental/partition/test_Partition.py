@@ -115,7 +115,13 @@ def test_Partition_mesh_src(tmp_path):
     src_chunks = (15000,)
     partition = Partition(src, tgt, scheme, files, src_chunks=src_chunks)
 
-    expected_src_chunks = [[[0, 15000]], [[15000, 30000]], [[30000, 45000]], [[45000, 60000]], [[60000, 75000]]]
+    expected_src_chunks = [
+        [[0, 15000]],
+        [[15000, 30000]],
+        [[30000, 45000]],
+        [[45000, 60000]],
+        [[60000, 75000]],
+    ]
     assert partition.src_blocks == expected_src_chunks
 
     partition.generate_files()
